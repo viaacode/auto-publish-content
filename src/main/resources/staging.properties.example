@@ -1,0 +1,6 @@
+mediahaven.host=
+mediahaven.port=
+mediahaven.basepath=
+mediahaven.authstring=
+
+pagesize=25
