@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <flow name="auto-publish-contentFlow">
+        <poll doc:name="Poll every day">
+            <fixed-frequency-scheduler frequency="1" timeUnit="DAYS"/>
+            <logger message="Starting autopublishing of items older than 6 months" level="INFO" doc:name="Starting autopublishing of items older than 6 months"/>
+        </poll>
+        <flow-ref name="initialize_dates" doc:name="initialize_dates"/>
+        <flow-ref name="initialize_looping_variables" doc:name="initialize_looping_variables"/>
+        <logger message="#[payload.totalNrOfResults] items will be published" level="INFO" doc:name="X items will be published"/>
+        <flow-ref name="loop_over_pages" doc:name="loop_over_pages"/>
+    </flow>
+    <flow name="testPublishOneItem" initialState="stopped">
+        <poll doc:name="Poll">
+            <fixed-frequency-scheduler frequency="1000" timeUnit="DAYS"/>
+            <logger message="Publishing one item" level="INFO" doc:name="Logger"/>
+        </poll>
+        <set-variable variableName="fragmentId" value="d37d7672077341d8be9a2c2abc925cf6ed11b5a362174af791b599172f3d015b14181b29d4364f949cab0b17d5403a3b" doc:name="Set fragmentId"/>
+        <set-attachment attachmentName="value" value="true" contentType="application/json" doc:name="Attachment"/>
+        <http:request config-ref="Mediahaven_Rest_API" path="/media/#[flowVars.fragmentId]/publish" method="POST" doc:name="Publish asset">
+            <http:request-builder>
+                <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
+            </http:request-builder>
+        </http:request>
+        <logger level="INFO" doc:name="Logger"/>
+    </flow>
+    <sub-flow name="initialize_dates">
+        <set-variable variableName="currentDateTime" value="#[server.dateTime]" doc:name="Set currentDateTime"/>
+        <set-variable variableName="startDate" value="#[new org.mule.el.datetime.DateTime(flowVars.currentDateTime).plusMonths(-6).plusDays(-1).format(&quot;yyyy:MM:dd&quot;)]" doc:name="Set startDate"/>
+        <set-variable variableName="endDate" value="#[new org.mule.el.datetime.DateTime(flowVars.currentDateTime).plusMonths(-6).format(&quot;yyyy:MM:dd&quot;)]" doc:name="Set endDate"/>
+        <logger message="Publishing items from #[flowVars.startDate] until #[flowVars.endDate]..." level="INFO" doc:name="Publishing items from Y until Z"/>
+    </sub-flow>
+    <sub-flow name="initialize_looping_variables">
+        <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="Retrieve totalNrOFResults">
+            <http:request-builder>
+                <http:query-param paramName="q" value="+(MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND MediaObjectFragmentisiningestspace:0)"/>
+                <http:query-param paramName="nrOfResults" value="1"/>
+                <http:query-param paramName="sort" value="MediaObjectArchiveDate"/>
+                <http:query-param paramName="direction" value="asc"/>
+                <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
+            </http:request-builder>
+        </http:request>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+        <set-variable variableName="nrOfResults" value="#[payload.totalNrOfResults]" doc:name="Set nrOfResults"/>
+        <set-variable variableName="pageCounter" value="#[(int) Math.round(Math.ceil((flowVars.nrOfResults / '${pagesize}')))]" doc:name="Set pageCounter"/>
+        <set-variable variableName="pages" value="#[new java.lang.Integer[flowVars.pageCounter]]" doc:name="Set pages"/>
+    </sub-flow>
+    <sub-flow name="loop_over_pages">
+        <foreach collection="#[java.util.Arrays.asList(flowVars.pages)]" doc:name="For each page" counterVariableName="pageCounter">
+            <set-variable variableName="startIndex" value="#[(flowVars.pageCounter - 1) * '${pagesize}']" doc:name="Set startIndex"/>
+            <logger message="Querying from index #[flowVars.startIndex]" level="INFO" doc:name="Logger"/>
+            <enricher source="#[payload]" target="#[flowVars.searchResults]" doc:name="Set searchResults">
+                <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="HTTP">
+                    <http:request-builder>
+                        <http:query-param paramName="q" value="+(MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND MediaObjectFragmentisiningestspace:0)"/>
+                        <http:query-param paramName="nrOfResults" value="${pagesize}"/>
+                        <http:query-param paramName="sort" value="MediaObjectArchiveDate"/>
+                        <http:query-param paramName="direction" value="asc"/>
+                        <http:query-param paramName="startIndex" value="#[flowVars.startIndex]"/>
+                        <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
+                    </http:request-builder>
+                </http:request>
+            </enricher>
+            <set-payload value="#[flowVars.searchResults]" doc:name="Set Payload to searchResults"/>
+            <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+            <set-payload value="#[payload.mediaDataList]" doc:name="Set Payload to mediaDataList"/>
+            <flow-ref name="loop_over_assets" doc:name="loop_over_assets"/>
+        </foreach>
+    </sub-flow>
+    <sub-flow name="loop_over_assets">
+        <foreach collection="#[payload]" doc:name="For each asset" counterVariableName="assetCounter">
+            <flow-ref name="publish_asset" doc:name="publish_asset"/>
+        </foreach>
+    </sub-flow>
+    <sub-flow name="publish_asset">
+        <set-variable variableName="fragmentId" value="#[payload.fragmentId]" doc:name="Set fragmentId"/>
+        <logger message="Publishing #[flowVars.fragmentId]" level="INFO" doc:name="Logger"/>
+        <set-attachment attachmentName="value" value="true" contentType="application/json" doc:name="Attachment"/>
+        <http:request config-ref="Mediahaven_Rest_API" path="/media/#[flowVars.fragmentId]/publish" method="POST" doc:name="Publish asset">
+            <http:request-builder>
+                <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
+            </http:request-builder>
+        </http:request>
+    </sub-flow>
+</mule>
