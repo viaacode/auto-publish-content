@@ -18,53 +18,99 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
             <logger message="Starting autopublishing of items older than 6 months" level="INFO" doc:name="Starting autopublishing of items older than 6 months"/>
         </poll>
         <flow-ref name="initialize_dates" doc:name="initialize_dates"/>
-        <flow-ref name="initialize_looping_variables" doc:name="initialize_looping_variables"/>
-        <logger message="#[payload.totalNrOfResults] items will be published" level="INFO" doc:name="X items will be published"/>
-        <flow-ref name="loop_over_pages" doc:name="loop_over_pages"/>
+        <flow-ref name="initialize_organisations" doc:name="initialize_organisations"/>
+        <foreach collection="#[flowVars.organisations]" doc:name="For Each">
+            <flow-ref name="initialize_looping_variables" doc:name="initialize_looping_variables"/>
+            <logger message="#[payload.totalNrOfResults] items will be published for organisation #[flowVars.organisationName]" level="INFO" doc:name="X items will be published"/>
+            <!-- 
+            <flow-ref name="loop_over_pages" doc:name="loop_over_pages"/>
+            -->
+        </foreach>
         <amqp:outbound-endpoint queueName="${rabbit.notificationqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Notify the mailer to start working!"/>
     </flow>
     <sub-flow name="initialize_dates">
-        <set-variable variableName="currentDateTime" value="#[server.dateTime]" doc:name="Set currentDateTime"/>
+        <set-variable variableName="currentDateTime" value="#[server.dateTime.plusDays(1)]" doc:name="Set currentDateTime //server.dateTime"/>
         <set-variable variableName="startDate" value="#[&quot;1985:01:01&quot;]" doc:name="Set startDate"/>
-        <set-variable variableName="endDate" value="#[new org.mule.el.datetime.DateTime(flowVars.currentDateTime).plusMonths(-0).format(&quot;yyyy:MM:dd&quot;)]" doc:name="Set endDate"/>
+        <set-variable variableName="endDate" value="#[new org.mule.el.datetime.DateTime(flowVars.currentDateTime).plusMonths(-6).format(&quot;yyyy:MM:dd&quot;)]" doc:name="Set endDate"/>
         <logger message="Publishing items from #[flowVars.startDate] until #[flowVars.endDate]..." level="INFO" doc:name="Publishing items from Y until Z"/>
     </sub-flow>
+    <sub-flow name="initialize_organisations">
+        <http:request config-ref="MAM_Monitoring_API" path="/json.php" method="GET" doc:name="Request all organisations">
+            <http:request-builder>
+                <http:query-param paramName="config" value="default"/>
+                <http:query-param paramName="service" value="MediaHaven"/>
+                <http:query-param paramName="view" value="Organisations"/>
+                <http:query-param paramName="order" value="0"/>
+                <http:query-param paramName="direction" value="down"/>
+                <http:query-param paramName="page" value="0"/>
+                <http:query-param paramName="cumulative" value="1"/>
+                <http:query-param paramName="granularity" value="month"/>
+                <http:query-param paramName="priority" value="0"/>
+                <http:query-param paramName="results" value="500"/>
+                <http:query-param paramName="limit" value="1000"/>
+                <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
+            </http:request-builder>
+        </http:request>
+        <dw:transform-message doc:name="Filter organisations">
+            <dw:input-payload doc:sample="sample_data/json_3.json"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload filter (
+	$.name != 'viaa' and
+	$.name != 'failures' and
+	$.name != 'plantentuinmeise' and
+	$.name != 'testbeeld'
+)]]></dw:set-payload>
+        </dw:transform-message>
+        <set-variable variableName="organisations" value="#[payload]" doc:name="Set organisations"/>
+    </sub-flow>
     <sub-flow name="initialize_looping_variables">
+        <set-variable variableName="organisationName" value="#[payload.name]" doc:name="Set organisationName"/>
+        <set-variable variableName="authorization" value="#['Basic ' + org.apache.commons.codec.binary.Base64.encodeBase64String((&quot;viaa@&quot; + flowVars.organisationName + &quot;:&quot; + '${mediahaven.password}').getBytes())]" doc:name="Set authorization"/>
         <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="Retrieve totalNrOfResults">
             <http:request-builder>
-                <http:query-param paramName="q" value="+((MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
+                <http:query-param paramName="q" value="+(MediaObjectOwnerName:#[flowVars.organisationName] AND (MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
                 <http:query-param paramName="nrOfResults" value="1"/>
                 <http:query-param paramName="sort" value="MediaObjectArchiveDate"/>
                 <http:query-param paramName="direction" value="asc"/>
-                <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
+                <http:header headerName="Authorization" value="#[flowVars.authorization]"/>
             </http:request-builder>
         </http:request>
         <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
         <set-variable variableName="nrOfResults" value="#[payload.totalNrOfResults]" doc:name="Set nrOfResults"/>
-        <set-variable variableName="pageCounter" value="#[(int) Math.round(Math.ceil((flowVars.nrOfResults / '${pagesize}')))]" doc:name="Set pageCounter"/>
+        <set-variable variableName="pagesize" value="#[(int) '${pagesize}']" doc:name="Set pagesize"/>
+        <set-variable variableName="pageCounter" value="#[(int) Math.round(Math.ceil((flowVars.nrOfResults / flowVars.pagesize)))]" doc:name="Set pageCounter"/>
         <set-variable variableName="pages" value="#[new java.lang.Integer[flowVars.pageCounter]]" doc:name="Set pages"/>
     </sub-flow>
     <sub-flow name="loop_over_pages">
-        <foreach collection="#[java.util.Arrays.asList(flowVars.pages)]" doc:name="For each page" counterVariableName="pageCounter">
-            <set-variable variableName="startIndex" value="#[(flowVars.pageCounter - 1) * '${pagesize}']" doc:name="Set startIndex"/>
-            <logger message="Querying from index #[flowVars.startIndex]" level="INFO" doc:name="Logger"/>
-            <enricher source="#[payload]" target="#[flowVars.searchResults]" doc:name="Set searchResults">
-                <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="HTTP">
-                    <http:request-builder>
-                        <http:query-param paramName="q" value="+((MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
-                        <http:query-param paramName="nrOfResults" value="${pagesize}"/>
-                        <http:query-param paramName="sort" value="MediaObjectArchiveDate"/>
-                        <http:query-param paramName="direction" value="asc"/>
-                        <http:query-param paramName="startIndex" value="#[flowVars.startIndex]"/>
-                        <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
-                    </http:request-builder>
-                </http:request>
-            </enricher>
-            <set-payload value="#[flowVars.searchResults]" doc:name="Set Payload to searchResults"/>
-            <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
-            <set-payload value="#[payload.mediaDataList]" doc:name="Set Payload to mediaDataList"/>
-            <flow-ref name="loop_over_assets" doc:name="loop_over_assets"/>
-        </foreach>
+        <choice doc:name="Choice">
+            <when expression="#[flowVars.pages.length &gt; 0]">
+                <foreach collection="#[java.util.Arrays.asList(flowVars.pages)]" counterVariableName="pageCounter" doc:name="For each page">
+                    <set-variable variableName="startIndex" value="#[(flowVars.pageCounter - 1) * '${pagesize}']" doc:name="Set startIndex"/>
+                    <logger message="Querying from index #[flowVars.startIndex]" level="INFO" doc:name="Logger"/>
+                    <enricher source="#[payload]" target="#[flowVars.searchResults]" doc:name="Set searchResults">
+                        <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="HTTP">
+                            <http:request-builder>
+                                <http:query-param paramName="q" value="+(MediaObjectOwnerName:#[flowVars.organisationName] AND (MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
+                                <http:query-param paramName="nrOfResults" value="${pagesize}"/>
+                                <http:query-param paramName="sort" value="MediaObjectArchiveDate"/>
+                                <http:query-param paramName="direction" value="asc"/>
+                                <http:query-param paramName="startIndex" value="#[flowVars.startIndex]"/>
+                                <http:header headerName="Authorization" value="#[flowVars.authorization]"/>
+                            </http:request-builder>
+                        </http:request>
+                    </enricher>
+                    <set-payload value="#[flowVars.searchResults]" doc:name="Set Payload to searchResults"/>
+                    <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
+                    <set-payload value="#[payload.mediaDataList]" doc:name="Set Payload to mediaDataList"/>
+                    <flow-ref name="loop_over_assets" doc:name="loop_over_assets"/>
+                </foreach>
+            </when>
+            <otherwise>
+                <expression-component doc:name="Do nothing"><![CDATA[// Do nothing]]></expression-component>
+            </otherwise>
+        </choice>
     </sub-flow>
     <sub-flow name="loop_over_assets">
         <foreach collection="#[payload]" doc:name="For each asset" counterVariableName="assetCounter">
@@ -73,28 +119,27 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
     </sub-flow>
     <sub-flow name="publish_asset">
         <set-variable variableName="fragmentId" value="#[payload.fragmentId]" doc:name="Set fragmentId"/>
-        <enricher source="#[payload[0].name]" target="#[flowVars.cp]" doc:name="Message Enricher">
-            <db:select config-ref="MAM_Snapshot" doc:name="Get organisation name for this fragment">
-                <db:parameterized-query><![CDATA[SELECT o.name FROM mediaobjects mo INNER JOIN organisations o ON o.organisation_id = mo.organisation_id
-WHERE mo.mediaobject_id = #[payload.mediaObjectId];]]></db:parameterized-query>
-            </db:select>
-        </enricher>
         <logger message="Sending request to publish #[flowVars.fragmentId] (#[payload.originalFileName])" level="INFO" doc:name="Publishing [fragmentId] ([originalFileName])"/>
         <dw:transform-message doc:name="Create publish message">
             <dw:set-payload><![CDATA[%dw 1.0
 %output application/json
 ---
 {
-	correlation_id: flowVars.fragmentId,
+	correlation_id: flowVars.organisationName ++ '/' ++ flowVars.fragmentId,
 	fragment_id: flowVars.fragmentId,
-	cp: flowVars.cp
+	cp: flowVars.organisationName
 }]]></dw:set-payload>
         </dw:transform-message>
+        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
         <amqp:outbound-endpoint queueName="${rabbit.publishqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send a publish request"/>
 <!--         <http:request config-ref="Mediahaven_Rest_API" path="/media/#[flowVars.fragmentId]/publish" method="POST" doc:name="Publish asset"> -->
 <!--             <http:request-builder> -->
 <!--                 <http:header headerName="Authorization" value="${mediahaven.authstring}"/> -->
 <!--             </http:request-builder> -->
 <!--         </http:request> -->
+    </sub-flow>
+    <sub-flow name="getCpNameMamFlow">
+        <http:request config-ref="LDAP2MAM" path="/org/name/#[flowVars.prettyCpName]" method="GET" doc:name="HTTP"/>
+        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
     </sub-flow>
 </mule>
