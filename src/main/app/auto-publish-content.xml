@@ -30,7 +30,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
             <flow-ref name="loop_over_pages" doc:name="loop_over_pages"/>
         </foreach>
         <amqp:outbound-endpoint queueName="${rabbit.notificationqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Notify the mailer to start working!"/>
-    	<async doc:name="Async">
+        <async doc:name="Async">
             <set-variable variableName="attachments" value="#[new java.util.ArrayList()]" doc:name="Set attachments"/>
             <expression-component doc:name="Expression"><![CDATA[org.mule.modules.slack.client.model.chat.attachment.ChatAttachment attachment = new org.mule.modules.slack.client.model.chat.attachment.ChatAttachment();
 
@@ -39,7 +39,7 @@ attachment.setTitle(server.dateTime.toString());
 
 flowVars.attachments.add(attachment);]]></expression-component>
             <logger message="Sending a message to Slack!" level="WARN" doc:name="Logger"/>
-            <slack:upload-file-as-input-streams config-ref="Slack__Token_Configuration" channelID="C5U7J2RLL" fileName="autopublish-content-#[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())].log" fileType="text" initialComment="Attached are the logs from the auto publish service that ran on #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]." title="Autopublish logfile #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]" inputStream-ref="#[new ByteArrayInputStream(flowVars.slackStringBuilder.toString().getBytes())]" doc:name="Slack"/>
+            <slack:upload-file-as-input-streams config-ref="Slack__Token_Configuration" channelID="${slack.channelid}" fileName="autopublish-content-#[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())].log" fileType="text" initialComment="Attached are the logs from the auto publish service that ran on #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]." title="Autopublish logfile #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]" inputStream-ref="#[new ByteArrayInputStream(flowVars.slackStringBuilder.toString().getBytes())]" doc:name="Slack"/>
         </async>
     </flow>
     <sub-flow name="initialize_dates">
