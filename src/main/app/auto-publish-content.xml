@@ -16,7 +16,7 @@ http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amq
 http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
     <flow name="auto-publish-contentFlow">
         <poll doc:name="Poll every day (0 0 0 1 * ?)">
-            <fixed-frequency-scheduler frequency="1000" timeUnit="DAYS"/>
+            <schedulers:cron-scheduler expression="0 0 0 1 * ?"/>
             <logger message="Starting autopublishing of items older than 6 months" level="INFO" doc:name="Starting autopublishing of items older than 6 months"/>
         </poll>
         <set-variable variableName="slackStringBuilder" value="#[new java.lang.StringBuilder()]" doc:name="Set slackStringBuilder"/>
