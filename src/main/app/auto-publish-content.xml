@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:schedulers="http://www.mulesoft.org/schema/mule/schedulers" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+<mule xmlns:slack="http://www.mulesoft.org/schema/mule/slack"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:schedulers="http://www.mulesoft.org/schema/mule/schedulers" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:spring="http://www.springframework.org/schema/beans" 
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/slack http://www.mulesoft.org/schema/mule/slack/current/mule-slack.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
 http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
 http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
@@ -17,21 +19,33 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
             <fixed-frequency-scheduler frequency="1000" timeUnit="DAYS"/>
             <logger message="Starting autopublishing of items older than 6 months" level="INFO" doc:name="Starting autopublishing of items older than 6 months"/>
         </poll>
+        <set-variable variableName="slackStringBuilder" value="#[new java.lang.StringBuilder()]" doc:name="Set slackStringBuilder"/>
         <flow-ref name="initialize_dates" doc:name="initialize_dates"/>
         <flow-ref name="initialize_organisations" doc:name="initialize_organisations"/>
-        <foreach collection="#[flowVars.organisations]" doc:name="For Each">
+        <foreach collection="#[flowVars.organisations]" doc:name="For Each Organisation">
             <flow-ref name="initialize_looping_variables" doc:name="initialize_looping_variables"/>
+            <expression-component doc:name="Expression"><![CDATA[flowVars.slackStringBuilder
+	.append(String.format("\nPublishing %s items for %s", payload.totalNrOfResults, flowVars.organisationName));]]></expression-component>
             <logger message="#[payload.totalNrOfResults] items will be published for organisation #[flowVars.organisationName]" level="INFO" doc:name="X items will be published"/>
-            <!-- 
             <flow-ref name="loop_over_pages" doc:name="loop_over_pages"/>
-            -->
         </foreach>
         <amqp:outbound-endpoint queueName="${rabbit.notificationqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Notify the mailer to start working!"/>
+    	<async doc:name="Async">
+            <set-variable variableName="attachments" value="#[new java.util.ArrayList()]" doc:name="Set attachments"/>
+            <expression-component doc:name="Expression"><![CDATA[org.mule.modules.slack.client.model.chat.attachment.ChatAttachment attachment = new org.mule.modules.slack.client.model.chat.attachment.ChatAttachment();
+
+attachment.setText(flowVars.slackStringBuilder.toString());
+attachment.setTitle(server.dateTime.toString());
+
+flowVars.attachments.add(attachment);]]></expression-component>
+            <logger message="Sending a message to Slack!" level="WARN" doc:name="Logger"/>
+            <slack:upload-file-as-input-streams config-ref="Slack__Token_Configuration" channelID="C5U7J2RLL" fileName="autopublish-content-#[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())].log" fileType="text" initialComment="Attached are the logs from the auto publish service that ran on #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]." title="Autopublish logfile #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]" inputStream-ref="#[new ByteArrayInputStream(flowVars.slackStringBuilder.toString().getBytes())]" doc:name="Slack"/>
+        </async>
     </flow>
     <sub-flow name="initialize_dates">
         <set-variable variableName="currentDateTime" value="#[server.dateTime.plusDays(1)]" doc:name="Set currentDateTime //server.dateTime"/>
         <set-variable variableName="startDate" value="#[&quot;1985:01:01&quot;]" doc:name="Set startDate"/>
-        <set-variable variableName="endDate" value="#[new org.mule.el.datetime.DateTime(flowVars.currentDateTime).plusMonths(-6).format(&quot;yyyy:MM:dd&quot;)]" doc:name="Set endDate"/>
+        <set-variable variableName="endDate" value="#[new org.mule.el.datetime.DateTime(flowVars.currentDateTime).plusMonths(-6).format(&quot;yyyy:MM:01 00:00:00&quot;)]" doc:name="Set endDate"/>
         <logger message="Publishing items from #[flowVars.startDate] until #[flowVars.endDate]..." level="INFO" doc:name="Publishing items from Y until Z"/>
     </sub-flow>
     <sub-flow name="initialize_organisations">
@@ -88,9 +102,9 @@ payload filter (
             <when expression="#[flowVars.pages.length &gt; 0]">
                 <foreach collection="#[java.util.Arrays.asList(flowVars.pages)]" counterVariableName="pageCounter" doc:name="For each page">
                     <set-variable variableName="startIndex" value="#[(flowVars.pageCounter - 1) * '${pagesize}']" doc:name="Set startIndex"/>
-                    <logger message="Querying from index #[flowVars.startIndex]" level="INFO" doc:name="Logger"/>
+                    <logger message="Querying from index #[flowVars.startIndex]" level="INFO" doc:name="Querying from index [startIndex]"/>
                     <enricher source="#[payload]" target="#[flowVars.searchResults]" doc:name="Set searchResults">
-                        <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="HTTP">
+                        <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="Request fragments for this page">
                             <http:request-builder>
                                 <http:query-param paramName="q" value="+(MediaObjectOwnerName:#[flowVars.organisationName] AND (MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
                                 <http:query-param paramName="nrOfResults" value="${pagesize}"/>
@@ -137,9 +151,5 @@ payload filter (
 <!--                 <http:header headerName="Authorization" value="${mediahaven.authstring}"/> -->
 <!--             </http:request-builder> -->
 <!--         </http:request> -->
-    </sub-flow>
-    <sub-flow name="getCpNameMamFlow">
-        <http:request config-ref="LDAP2MAM" path="/org/name/#[flowVars.prettyCpName]" method="GET" doc:name="HTTP"/>
-        <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
     </sub-flow>
 </mule>
