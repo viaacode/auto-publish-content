@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:slack="http://www.mulesoft.org/schema/mule/slack"
+<mule xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:slack="http://www.mulesoft.org/schema/mule/slack"
 	xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:amqp="http://www.mulesoft.org/schema/mule/amqp" xmlns:schedulers="http://www.mulesoft.org/schema/mule/schedulers" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 	xmlns:spring="http://www.springframework.org/schema/beans" 
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -39,13 +39,13 @@ attachment.setTitle(server.dateTime.toString());
 
 flowVars.attachments.add(attachment);]]></expression-component>
             <logger message="Sending a message to Slack!" level="WARN" doc:name="Logger"/>
-            <slack:upload-file-as-input-streams config-ref="Slack__Token_Configuration" channelID="${slack.channelid}" fileName="autopublish-content-#[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())].log" fileType="text" initialComment="Attached are the logs from the auto publish service that ran on #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]." title="Autopublish logfile #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]" inputStream-ref="#[new ByteArrayInputStream(flowVars.slackStringBuilder.toString().getBytes())]" doc:name="Slack"/>
+            <slack:upload-file-as-input-streams config-ref="Slack__Token_Configuration" channelID="${slack.channelid}" fileName="autopublish-content-#[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())].log" fileType="text" initialComment="[${mule.env}] - Attached are the logs from the auto publish service that ran on #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]." title="[${mule.env}] - Autopublish logfile #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]" inputStream-ref="#[new ByteArrayInputStream(flowVars.slackStringBuilder.toString().getBytes())]" doc:name="Slack"/>
         </async>
     </flow>
     <sub-flow name="initialize_dates">
-        <set-variable variableName="currentDateTime" value="#[server.dateTime.plusDays(1)]" doc:name="Set currentDateTime //server.dateTime"/>
+        <set-variable variableName="currentDateTime" value="#[server.dateTime]" doc:name="Set currentDateTime //server.dateTime"/>
         <set-variable variableName="startDate" value="#[&quot;1985:01:01&quot;]" doc:name="Set startDate"/>
-        <set-variable variableName="endDate" value="#[new org.mule.el.datetime.DateTime(flowVars.currentDateTime).plusMonths(-6).format(&quot;yyyy:MM:01 00:00:00&quot;)]" doc:name="Set endDate"/>
+        <set-variable variableName="endDate" value="#[new org.mule.el.datetime.DateTime(flowVars.currentDateTime).plusMonths(-6).format(&quot;yyyy:MM:01 00:00:00&quot;)]" doc:name="Set endDate plusMonths(-6)"/>
         <logger message="Publishing items from #[flowVars.startDate] until #[flowVars.endDate]..." level="INFO" doc:name="Publishing items from Y until Z"/>
     </sub-flow>
     <sub-flow name="initialize_organisations">
@@ -60,8 +60,10 @@ flowVars.attachments.add(attachment);]]></expression-component>
                 <http:query-param paramName="cumulative" value="1"/>
                 <http:query-param paramName="granularity" value="month"/>
                 <http:query-param paramName="priority" value="0"/>
-                <http:query-param paramName="results" value="500"/>
+                <http:query-param paramName="results" value="1000"/>
                 <http:query-param paramName="limit" value="1000"/>
+                <http:query-param paramName="filter[results]" value="1000"/>
+                <http:query-param paramName="filter[limit]" value="1000"/>
                 <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
             </http:request-builder>
         </http:request>
