@@ -16,7 +16,7 @@ http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amq
 http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
     <flow name="auto-publish-contentFlow">
         <poll doc:name="Poll every day (0 0 0 1 * ?)">
-            <schedulers:cron-scheduler expression="0 0 0 1 * ?"/>
+            <fixed-frequency-scheduler frequency="1000" timeUnit="DAYS"/>
             <logger message="Starting autopublishing of items older than 6 months" level="INFO" doc:name="Starting autopublishing of items older than 6 months"/>
         </poll>
         <set-variable variableName="slackStringBuilder" value="#[new java.lang.StringBuilder()]" doc:name="Set slackStringBuilder"/>
@@ -39,7 +39,9 @@ attachment.setTitle(server.dateTime.toString());
 
 flowVars.attachments.add(attachment);]]></expression-component>
             <logger message="Sending a message to Slack!" level="WARN" doc:name="Logger"/>
-            <slack:upload-file-as-input-streams config-ref="Slack__Token_Configuration" channelID="${slack.channelid}" fileName="autopublish-content-#[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())].log" fileType="text" initialComment="[${mule.env}] - Attached are the logs from the auto publish service that ran on #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]." title="[${mule.env}] - Autopublish logfile #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]" inputStream-ref="#[new ByteArrayInputStream(flowVars.slackStringBuilder.toString().getBytes())]" doc:name="Slack"/>
+            <until-successful maxRetries="5" millisBetweenRetries="5000" synchronous="true" doc:name="Until Successful">
+                <slack:upload-file-as-input-streams config-ref="Slack__Token_Configuration" channelID="${slack.channelid}" fileName="autopublish-content-#[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())].log" fileType="text" initialComment="[${mule.env}] - Attached are the logs from the auto publish service that ran on #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]." title="[${mule.env}] - Autopublish logfile #[org.joda.time.format.DateTimeFormat.forPattern(&quot;E d MMMM yyyy&quot;).print(new org.joda.time.DateTime())]" inputStream-ref="#[new ByteArrayInputStream(flowVars.slackStringBuilder.toString().getBytes())]" doc:name="Slack"/>
+            </until-successful>
         </async>
     </flow>
     <sub-flow name="initialize_dates">
@@ -49,24 +51,26 @@ flowVars.attachments.add(attachment);]]></expression-component>
         <logger message="Publishing items from #[flowVars.startDate] until #[flowVars.endDate]..." level="INFO" doc:name="Publishing items from Y until Z"/>
     </sub-flow>
     <sub-flow name="initialize_organisations">
-        <http:request config-ref="MAM_Monitoring_API" path="/json.php" method="GET" doc:name="Request all organisations">
-            <http:request-builder>
-                <http:query-param paramName="config" value="default"/>
-                <http:query-param paramName="service" value="MediaHaven"/>
-                <http:query-param paramName="view" value="Organisations"/>
-                <http:query-param paramName="order" value="0"/>
-                <http:query-param paramName="direction" value="down"/>
-                <http:query-param paramName="page" value="0"/>
-                <http:query-param paramName="cumulative" value="1"/>
-                <http:query-param paramName="granularity" value="month"/>
-                <http:query-param paramName="priority" value="0"/>
-                <http:query-param paramName="results" value="1000"/>
-                <http:query-param paramName="limit" value="1000"/>
-                <http:query-param paramName="filter[results]" value="1000"/>
-                <http:query-param paramName="filter[limit]" value="1000"/>
-                <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
-            </http:request-builder>
-        </http:request>
+        <until-successful maxRetries="5" millisBetweenRetries="5000" synchronous="true" doc:name="Until Successful">
+            <http:request config-ref="MAM_Monitoring_API" path="/json.php" method="GET" doc:name="Request all organisations">
+                <http:request-builder>
+                    <http:query-param paramName="config" value="default"/>
+                    <http:query-param paramName="service" value="MediaHaven"/>
+                    <http:query-param paramName="view" value="Organisations"/>
+                    <http:query-param paramName="order" value="0"/>
+                    <http:query-param paramName="direction" value="down"/>
+                    <http:query-param paramName="page" value="0"/>
+                    <http:query-param paramName="cumulative" value="1"/>
+                    <http:query-param paramName="granularity" value="month"/>
+                    <http:query-param paramName="priority" value="0"/>
+                    <http:query-param paramName="results" value="1000"/>
+                    <http:query-param paramName="limit" value="1000"/>
+                    <http:query-param paramName="filter[results]" value="1000"/>
+                    <http:query-param paramName="filter[limit]" value="1000"/>
+                    <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
+                </http:request-builder>
+            </http:request>
+        </until-successful>
         <dw:transform-message doc:name="Filter organisations">
             <dw:input-payload doc:sample="sample_data/json_3.json"/>
             <dw:set-payload><![CDATA[%dw 1.0
@@ -84,15 +88,17 @@ payload filter (
     <sub-flow name="initialize_looping_variables">
         <set-variable variableName="organisationName" value="#[payload.name]" doc:name="Set organisationName"/>
         <set-variable variableName="authorization" value="#['Basic ' + org.apache.commons.codec.binary.Base64.encodeBase64String((&quot;viaa@&quot; + flowVars.organisationName + &quot;:&quot; + '${mediahaven.password}').getBytes())]" doc:name="Set authorization"/>
-        <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="Retrieve totalNrOfResults">
-            <http:request-builder>
-                <http:query-param paramName="q" value="+(MediaObjectOwnerName:#[flowVars.organisationName] AND (MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
-                <http:query-param paramName="nrOfResults" value="1"/>
-                <http:query-param paramName="sort" value="MediaObjectArchiveDate"/>
-                <http:query-param paramName="direction" value="asc"/>
-                <http:header headerName="Authorization" value="#[flowVars.authorization]"/>
-            </http:request-builder>
-        </http:request>
+        <until-successful maxRetries="5" millisBetweenRetries="5000" synchronous="true" doc:name="Until Successful">
+            <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="Retrieve totalNrOfResults">
+                <http:request-builder>
+                    <http:query-param paramName="q" value="+(MediaObjectOwnerName:#[flowVars.organisationName] AND (MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
+                    <http:query-param paramName="nrOfResults" value="1"/>
+                    <http:query-param paramName="sort" value="MediaObjectArchiveDate"/>
+                    <http:query-param paramName="direction" value="asc"/>
+                    <http:header headerName="Authorization" value="#[flowVars.authorization]"/>
+                </http:request-builder>
+            </http:request>
+        </until-successful>
         <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
         <set-variable variableName="nrOfResults" value="#[payload.totalNrOfResults]" doc:name="Set nrOfResults"/>
         <set-variable variableName="pagesize" value="#[(int) '${pagesize}']" doc:name="Set pagesize"/>
@@ -106,16 +112,18 @@ payload filter (
                     <set-variable variableName="startIndex" value="#[(flowVars.pageCounter - 1) * '${pagesize}']" doc:name="Set startIndex"/>
                     <logger message="Querying from index #[flowVars.startIndex]" level="INFO" doc:name="Querying from index [startIndex]"/>
                     <enricher source="#[payload]" target="#[flowVars.searchResults]" doc:name="Set searchResults">
-                        <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="Request fragments for this page">
-                            <http:request-builder>
-                                <http:query-param paramName="q" value="+(MediaObjectOwnerName:#[flowVars.organisationName] AND (MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
-                                <http:query-param paramName="nrOfResults" value="${pagesize}"/>
-                                <http:query-param paramName="sort" value="MediaObjectArchiveDate"/>
-                                <http:query-param paramName="direction" value="asc"/>
-                                <http:query-param paramName="startIndex" value="#[flowVars.startIndex]"/>
-                                <http:header headerName="Authorization" value="#[flowVars.authorization]"/>
-                            </http:request-builder>
-                        </http:request>
+                        <until-successful maxRetries="5" millisBetweenRetries="5000" synchronous="true" doc:name="Until Successful">
+                            <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="Request fragments for this page">
+                                <http:request-builder>
+                                    <http:query-param paramName="q" value="+(MediaObjectOwnerName:#[flowVars.organisationName] AND (MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
+                                    <http:query-param paramName="nrOfResults" value="${pagesize}"/>
+                                    <http:query-param paramName="sort" value="MediaObjectArchiveDate"/>
+                                    <http:query-param paramName="direction" value="asc"/>
+                                    <http:query-param paramName="startIndex" value="#[flowVars.startIndex]"/>
+                                    <http:header headerName="Authorization" value="#[flowVars.authorization]"/>
+                                </http:request-builder>
+                            </http:request>
+                        </until-successful>
                     </enricher>
                     <set-payload value="#[flowVars.searchResults]" doc:name="Set Payload to searchResults"/>
                     <json:json-to-object-transformer returnClass="java.util.HashMap" doc:name="JSON to Object"/>
