@@ -12,7 +12,7 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-		<mule.version>3.7.4</mule.version>
+		<mule.version>3.9.0</mule.version>
     	<mule.tools.version>1.2</mule.tools.version>
 	</properties>
 
@@ -143,6 +143,18 @@
             <groupId>org.mule.transports</groupId>
             <artifactId>mule-transport-amqp</artifactId>
             <version>3.7.0</version>
+        </dependency>
+    <dependency>
+            <groupId>com.mulesoft.muleesb.transports</groupId>
+            <artifactId>mule-transport-ftp-ee</artifactId>
+            <version>${mule.version}</version>
+            <scope>provided</scope>
+        </dependency>
+    <dependency>
+            <groupId>cglib</groupId>
+            <artifactId>cglib</artifactId>
+            <version>3.2.2</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 
