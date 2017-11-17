@@ -207,7 +207,7 @@ payload filter (
 {'$key': val})}]]></dw:set-payload>
         </dw:transform-message>
                     <until-successful maxRetries="5" millisBetweenRetries="5000" synchronous="true" doc:name="Until Successful">
-                <slack:post-message config-ref="Slack__Token_Configuration"       doc:name="Slack" channelId="C5U7J2RLL" iconURL="http://findicons.com/files/icons/1393/world_of_aqua_3/128/hal_9000.png" message="DIT IS EEN TEST - [#['${mule.env}']] During the last publish job, #[payload.success] publishes were successful while #[payload.failed] failed." username="arch-9000"/>
+                <slack:post-message config-ref="Slack__Token_Configuration"       doc:name="Slack" channelId="${slack.channelid}" iconURL="http://findicons.com/files/icons/1393/world_of_aqua_3/128/hal_9000.png" message="DIT IS EEN TEST - [#['${mule.env}']] During the last publish job, #[payload.success] publishes were successful while #[payload.failed] failed." username="arch-9000"/>
             </until-successful>
     </flow>
 </mule>
