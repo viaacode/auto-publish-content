@@ -15,8 +15,8 @@ http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee
 http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
 http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
     <flow name="auto-publish-contentFlow">
-        <poll doc:name="Poll every day (0 0 0 1 * ?)">
-            <fixed-frequency-scheduler frequency="1000" timeUnit="DAYS"/>
+        <poll doc:name="Poll every first day of the month (0 0 0 1 * ?)">
+            <schedulers:cron-scheduler expression="0 0 0 1 * ?"/>
             <logger message="Starting autopublishing of items older than 6 months" level="INFO" doc:name="Starting autopublishing of items older than 6 months"/>
         </poll>
         <set-variable variableName="slackStringBuilder" value="#[new java.lang.StringBuilder()]" doc:name="Set slackStringBuilder"/>
@@ -162,4 +162,52 @@ payload filter (
 <!--             </http:request-builder> -->
 <!--         </http:request> -->
     </sub-flow>
+    <flow name="auto-publish-checkFlow">
+        <poll doc:name="Poll every third day of the month (0 0 0 3 * ?)">
+            <fixed-frequency-scheduler frequency="1000" timeUnit="DAYS"/>
+            <logger level="INFO" doc:name="Logger"/>
+        </poll>
+        <set-variable variableName="startDate" value="#[new org.mule.el.datetime.DateTime().format(&quot;yyyy-MM-01&quot;)]" doc:name="Set startDate"/>
+        <dw:transform-message doc:name="Create aggregate query on ES">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	"query": {
+		"bool": {
+			"filter": [
+				{
+		        		"term": { "type": "response" }
+		    	},
+		    	{ "range": { "timestamp": { "gte": flowVars.startDate } } }
+	    	]
+		}
+    },
+    "aggs": {
+        "counts": {
+            "terms": {
+                "field": "outcome.keyword",
+                "include": ["success", "failed"]
+            }
+        }
+    }
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <http:request config-ref="ES" path="/${es.index}/_search" method="POST" doc:name="Perform query on ES">
+            <http:request-builder>
+                <http:query-param paramName="size" value="0"/>
+            </http:request-builder>
+        </http:request>
+        <dw:transform-message doc:name="Transform the result">
+            <dw:input-payload doc:sample="sample_data/json_4.json"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{(payload.aggregations.counts.buckets map using (key = $.key, val = $.doc_count)
+{'$key': val})}]]></dw:set-payload>
+        </dw:transform-message>
+                    <until-successful maxRetries="5" millisBetweenRetries="5000" synchronous="true" doc:name="Until Successful">
+                <slack:post-message config-ref="Slack__Token_Configuration"       doc:name="Slack" channelId="C5U7J2RLL" iconURL="http://findicons.com/files/icons/1393/world_of_aqua_3/128/hal_9000.png" message="DIT IS EEN TEST - [#['${mule.env}']] During the last publish job, #[payload.success] publishes were successful while #[payload.failed] failed." username="arch-9000"/>
+            </until-successful>
+    </flow>
 </mule>
