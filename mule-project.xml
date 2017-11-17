@@ -3,4 +3,5 @@
     <name>auto-publish-content</name>
     <description></description>
     <muleExtension name="AMQP-0-9" qualifier="mule-transport-amqp-contribution"/>
+    <muleExtension name="Slack" qualifier="org.mule.tooling.ui.contribution.slack.3.5.0"/>
 </mule-project>
