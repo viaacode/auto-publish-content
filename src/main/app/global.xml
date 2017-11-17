@@ -16,6 +16,7 @@ http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amq
     <http:request-config name="LDAP2MAM" host="${ldap2mam.host}" port="${ldap2mam.port}" basePath="${ldap2mam.basepath}" doc:name="HTTP Request Configuration">
         <http:raml-api-configuration location="http://do-prd-esb-01.do.viaa.be:10003/api"/>
     </http:request-config>
+    <http:request-config name="ES" host="${es.host}" port="${es.port}" basePath="${es.basepath}" doc:name="HTTP Request Configuration"/>
     <amqp:connector name="AMQP_0_9_Connector" validateConnections="true" host="${rabbit.host}" port="${rabbit.port}" virtualHost="${rabbit.virtualhost}" username="${rabbit.username}" password="${rabbit.password}" numberOfChannels="1" doc:name="AMQP-0-9 Connector"/>
     <slack:token-config name="Slack__Token_Configuration" accessToken="${slack.token}" doc:name="Slack: Token Configuration"/>
 </mule>
