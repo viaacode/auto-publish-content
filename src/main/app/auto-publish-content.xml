@@ -164,7 +164,7 @@ payload filter (
     </sub-flow>
     <flow name="auto-publish-checkFlow">
         <poll doc:name="Poll every third day of the month (0 0 0 3 * ?)">
-            <fixed-frequency-scheduler frequency="1000" timeUnit="DAYS"/>
+            <schedulers:cron-scheduler expression="0 0 0 3 * ?"/>
             <logger level="INFO" doc:name="Logger"/>
         </poll>
         <set-variable variableName="startDate" value="#[new org.mule.el.datetime.DateTime().format(&quot;yyyy-MM-01&quot;)]" doc:name="Set startDate"/>
