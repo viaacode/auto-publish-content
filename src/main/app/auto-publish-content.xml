@@ -14,6 +14,21 @@ http://www.mulesoft.org/schema/mule/schedulers http://www.mulesoft.org/schema/mu
 http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
 http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd
 http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+    <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="4321" doc:name="HTTP Listener Configuration"/>
+    <flow name="manualTriggerFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/publish" doc:name="HTTP"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	"result": "started"
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <async doc:name="Async">
+            <flow-ref name="auto-publish-contentFlow" doc:name="Flow Reference"/>
+        </async>
+    </flow>
     <flow name="auto-publish-contentFlow">
         <poll doc:name="Poll every first day of the month (0 0 0 1 * ?)">
             <schedulers:cron-scheduler expression="0 0 0 1 * ?"/>
@@ -67,7 +82,7 @@ flowVars.attachments.add(attachment);]]></expression-component>
                     <http:query-param paramName="limit" value="1000"/>
                     <http:query-param paramName="filter[results]" value="1000"/>
                     <http:query-param paramName="filter[limit]" value="1000"/>
-                    <http:header headerName="Authorization" value="${mediahaven.authstring}"/>
+                    <http:header headerName="Authorization" value="${mediahaven.monitoring.authstring}"/>
                 </http:request-builder>
             </http:request>
         </until-successful>
@@ -87,6 +102,7 @@ payload filter (
     </sub-flow>
     <sub-flow name="initialize_looping_variables">
         <set-variable variableName="organisationName" value="#[payload.name]" doc:name="Set organisationName"/>
+        <logger message="Checking #[flowVars.organisationName]" level="INFO" doc:name="Logger"/>
         <set-variable variableName="authorization" value="#['Basic ' + org.apache.commons.codec.binary.Base64.encodeBase64String((&quot;viaa@&quot; + flowVars.organisationName + &quot;:&quot; + '${mediahaven.password}').getBytes())]" doc:name="Set authorization"/>
         <until-successful maxRetries="5" millisBetweenRetries="5000" synchronous="true" doc:name="Until Successful">
             <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="Retrieve totalNrOfResults">
