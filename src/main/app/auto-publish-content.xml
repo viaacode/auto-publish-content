@@ -106,7 +106,7 @@ payload filter (
         <logger message="Checking #[flowVars.organisationName]" level="INFO" doc:name="Logger"/>
         <set-variable variableName="authorization" value="#['Basic ' + org.apache.commons.codec.binary.Base64.encodeBase64String((&quot;viaa@&quot; + flowVars.organisationName + &quot;:&quot; + '${mediahaven.password}').getBytes())]" doc:name="Set authorization"/>
         <until-successful maxRetries="5" millisBetweenRetries="5000" synchronous="true" doc:name="Until Successful">
-            <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="Retrieve totalNrOfResults">
+            <http:request config-ref="MAM_Rest_API" path="/" method="GET" doc:name="Retrieve totalNrOfResults">
                 <http:request-builder>
                     <http:query-param paramName="q" value="+(MediaObjectOwnerName:#[flowVars.organisationName] AND (MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
                     <http:query-param paramName="nrOfResults" value="1"/>
@@ -130,7 +130,7 @@ payload filter (
                     <logger message="Querying from index #[flowVars.startIndex]" level="INFO" doc:name="Querying from index [startIndex]"/>
                     <enricher source="#[payload]" target="#[flowVars.searchResults]" doc:name="Set searchResults">
                         <until-successful maxRetries="5" millisBetweenRetries="5000" synchronous="true" doc:name="Until Successful">
-                            <http:request config-ref="Mediahaven_Rest_API" path="/media/" method="GET" doc:name="Request fragments for this page">
+                            <http:request config-ref="MAM_Rest_API" path="/" method="GET" doc:name="Request fragments for this page">
                                 <http:request-builder>
                                     <http:query-param paramName="q" value="+(MediaObjectOwnerName:#[flowVars.organisationName] AND (MediaObjectArchiveStatus:on_tape OR MediaObjectArchiveStatus:on_disk) AND MediaObjectArchiveDate:[&quot;#[flowVars.startDate]&quot; TO &quot;#[flowVars.endDate]&quot;] AND (MediaObjectType:video OR MediaObjectType:audio OR MediaObjectType:document) AND MediaObjectFragmentisiningestspace:1)"/>
                                     <http:query-param paramName="nrOfResults" value="${pagesize}"/>
@@ -210,7 +210,7 @@ payload filter (
     }
 }]]></dw:set-payload>
         </dw:transform-message>
-        <http:request config-ref="ES" path="/${es.index}/_search" method="POST" doc:name="Perform query on ES">
+        <http:request config-ref="Elasticsearch" path="/${es.index}/_search" method="POST" doc:name="Perform query on ES">
             <http:request-builder>
                 <http:query-param paramName="size" value="0"/>
             </http:request-builder>
