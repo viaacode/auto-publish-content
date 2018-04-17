@@ -103,7 +103,6 @@ payload filter (
     </sub-flow>
     <sub-flow name="initialize_looping_variables">
         <set-variable variableName="organisationName" value="#[payload.name]" doc:name="Set organisationName"/>
-        <logger message="Checking #[flowVars.organisationName]" level="INFO" doc:name="Logger"/>
         <set-variable variableName="authorization" value="#['Basic ' + org.apache.commons.codec.binary.Base64.encodeBase64String((&quot;viaa@&quot; + flowVars.organisationName + &quot;:&quot; + '${mediahaven.password}').getBytes())]" doc:name="Set authorization"/>
         <until-successful maxRetries="5" millisBetweenRetries="5000" synchronous="true" doc:name="Until Successful">
             <http:request config-ref="MAM_Rest_API" path="/" method="GET" doc:name="Retrieve totalNrOfResults">
@@ -172,12 +171,7 @@ payload filter (
 }]]></dw:set-payload>
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
-        <amqp:outbound-endpoint queueName="${rabbit.publishqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send a publish request"/>
-<!--         <http:request config-ref="Mediahaven_Rest_API" path="/media/#[flowVars.fragmentId]/publish" method="POST" doc:name="Publish asset"> -->
-<!--             <http:request-builder> -->
-<!--                 <http:header headerName="Authorization" value="${mediahaven.authstring}"/> -->
-<!--             </http:request-builder> -->
-<!--         </http:request> -->
+<!--         <amqp:outbound-endpoint queueName="${rabbit.publishqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send a publish request"/> -->
     </sub-flow>
     <flow name="auto-publish-checkFlow">
         <poll doc:name="Poll every third day of the month (0 0 0 3 * ?)">
