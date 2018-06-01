@@ -171,7 +171,7 @@ payload filter (
 }]]></dw:set-payload>
         </dw:transform-message>
         <byte-array-to-string-transformer doc:name="Byte Array to String"/>
-<!--         <amqp:outbound-endpoint queueName="${rabbit.publishqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send a publish request"/> -->
+        <amqp:outbound-endpoint queueName="${rabbit.publishqueue}" responseTimeout="10000" connector-ref="AMQP_0_9_Connector" doc:name="Send a publish request"/>
     </sub-flow>
     <flow name="auto-publish-checkFlow">
         <poll doc:name="Poll every third day of the month (0 0 0 3 * ?)">
