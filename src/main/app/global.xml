@@ -11,7 +11,13 @@ http://www.springframework.org/schema/beans http://www.springframework.org/schem
 http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
 http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
 http://www.mulesoft.org/schema/mule/amqp http://www.mulesoft.org/schema/mule/amqp/current/mule-amqp.xsd">
-    <context:property-placeholder location="${mule.env}.properties"/>
+<!--     <context:property-placeholder location="${mule.env}.properties"/> -->
+<context:property-placeholder properties-ref="YamlPropertiesFactoryBean" />
+<spring:beans>
+  <spring:bean id="YamlPropertiesFactoryBean" name="YamlPropertiesFactoryBean" class="org.springframework.beans.factory.config.YamlPropertiesFactoryBean">
+    <spring:property name="resources" value="${mule.env}.yml" />
+  </spring:bean>
+</spring:beans>
     <http:request-config name="Mediahaven_Rest_API" host="${mediahaven.host}" port="${mediahaven.port}" basePath="${mediahaven.basepath}" doc:name="HTTP Request Configuration" protocol="HTTPS"/>
     <http:request-config name="LDAP2MAM" host="${ldap2mam.host}" port="${ldap2mam.port}" basePath="${ldap2mam.basepath}" doc:name="HTTP Request Configuration">
         <http:raml-api-configuration location="http://do-prd-esb-01.do.viaa.be:10003/api"/>
